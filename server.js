@@ -1,25 +1,33 @@
-const express = require("express");
-const fetch = require("node-fetch");
+const express = require('express');
+const { createProxyMiddleware } = require('http-proxy-middleware');
+
+const TARGET = process.env.TARGET || 'http://smarterplus1.freeddns.org:8080';
 const app = express();
 
-const TARGET = "http://smarterplus1.freeddns.org:8080"; // ton Owncast
-
-// Proxy HLS
-app.get("/hls/:path(*)", async (req, res) => {
-  try {
-    const url = `${TARGET}/hls/${req.params.path}`;
-    const r = await fetch(url);
-    res.set("Content-Type", r.headers.get("content-type"));
-    r.body.pipe(res);
-  } catch (err) {
-    res.status(500).send("Erreur proxy HLS");
-  }
+// Middleware CORS
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');   // autorise tout domaine
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
 });
 
-// Test route
-app.get("/", (req, res) => {
-  res.send("✅ Proxy Owncast Render fonctionne !");
-});
+// Proxy vers Owncast
+app.use('/hls', createProxyMiddleware({
+  target: TARGET,
+  changeOrigin: true,
+  pathRewrite: { '^/hls': '/hls' },
+  onProxyRes: (proxyRes) => {
+    proxyRes.headers['access-control-allow-origin'] = '*';
+    proxyRes.headers['access-control-allow-headers'] = 'Range,Content-Type';
+  },
+  proxyTimeout: 20000,
+  timeout: 20000,
+  logLevel: 'warn'
+}));
+
+app.get('/', (req, res) => res.send('✅ Proxy Owncast avec CORS OK'));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Proxy démarré sur port ${PORT}`));
+app.listen(PORT, () => console.log(`Listening on ${PORT}`));
